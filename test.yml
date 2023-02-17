@@ -1,0 +1,9 @@
+---
+- name: Test web server configuration
+  hosts: server
+  gather_facts: no
+  tasks:
+    - name: Check that HTTP service is redirected to HTTPS
+      command: curl -LI http://{{ ec2_host }} -o /dev/null -w '%{url_effective}'
+      register: http_status
+      until: http_status.stdout_lines[0] == 'https://{{ ec2_host }}/'

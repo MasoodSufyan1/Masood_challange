@@ -1,0 +1,9 @@
+---
+- name: run the playbook tasks on the localhost
+  hosts: 127.0.0.1
+  connection: local
+  gather_facts: no
+  become: yes
+  become_user: root
+  roles:
+    - role: aws-ec2-webserver

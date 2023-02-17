@@ -1,0 +1,104 @@
+---
+# tasks file for aws-ec2-webserver
+- name: Create a security group
+  ec2_group:
+    name: "{{ security_group }}"
+    description: The webservers security group
+    region: "{{ region }}"
+    rules:
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 443
+        to_port: 443
+        cidr_ip: 0.0.0.0/0
+    rules_egress:
+      - proto: all
+        cidr_ip: 0.0.0.0/0
+    
+
+- name: Launch the new EC2 Instance ## one of the below approach can be used
+  ec2:
+        group: "{{ security_group }}"
+        instance_type: "{{ instance_type }}"
+        image: "{{ image }}"
+        wait: true
+        region: "{{ region }}"
+        keypair: "{{ keypair }}"
+        count: "{{count}}"
+  register: ec2
+
+#OR
+- name: create auto scaling group
+  ec2_asg:
+    name: webservers
+    load_balancers: [ 'lb1', 'lb2' ]
+    availability_zones: [ 'us-east-2a', 'us-east-2b' ]
+    launch_config_name: 'lc-1'
+    min_size: 1
+    max_size: 3
+    desired_capacity: 2
+    vpc_zone_identifier: [ 'subnet-abcd1234', 'subnet-1a2b3c4d' ]
+  register: ec2
+
+- name: Add the newly created host to inventory so that we can contact it
+  add_host:
+    name: "{{ item.public_ip }}"
+    groups: webservers
+  with_items: "{{ ec2.instances }}"
+
+- name: Wait for SSH connection
+  wait_for:
+    host: "{{ item.public_ip }}"
+    port: 22
+    state: started
+  with_items: "{{ ec2.instances }}"
+
+- name: install the latest apache 
+  package: name=httpd state=latest
+- name: start apache
+  service: name=httpd state=started enabled=yes
+
+- name: copy the index file 
+  copy:
+    src: index.html 
+    dest: /var/www/html/index.html
+    owner: apache 
+    group: apache
+    mode: 0644
+
+- name: copy the cert and the key files /etc/ssl/certs/
+  copy:
+    src: mysite.crt  
+    dest: /etc/ssl/certs/mysite.crt
+    owner: root 
+    group: root 
+    mode: 0644
+
+- name: copy the cert and the key files /etc/ssl/certs/
+  copy:
+    src: mysite.key
+    dest: /etc/ssl/certs/mysite.key
+    owner: root
+    group: root
+    mode: 0644
+
+
+- name: copy the preconfigured httpd.conf with ssl config
+  copy:
+    src: httpd.conf 
+    dest: /etc/httpd/conf/httpd.conf 
+    owner: apache
+    group: apache
+    mode: 0644
+
+- name: reload apache 
+  service:
+    name: httpd
+    state: reloaded 
